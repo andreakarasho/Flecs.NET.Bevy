@@ -1,5 +1,4 @@
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Flecs.NET.Core;
 
@@ -195,30 +194,6 @@ public sealed partial class Scheduler
 		return sys;
 	}
 
-	public FuncSystem<World> AddSystem<T0, T1>(Action<T0, T1> system, Stages stage = Stages.Update, ThreadingMode threadingType = ThreadingMode.Auto)
-            where T0 : class, ISystemParam<World>, IIntoSystemParam<World>
-            where T1 : class, ISystemParam<World>, IIntoSystemParam<World>
-	{
-		T0? obj0 = null;
-		T1? obj1 = null;
-		var checkInuse = () => obj0?.UseIndex != 0 || obj1?.UseIndex != 0;
-		var fn = (World args, Func<World, bool> runIf) =>
-		{
-			if (runIf != null && !runIf.Invoke(args))
-				return;
-
-			obj0 ??= (T0)T0.Generate(args);
-			obj1 ??= (T1)T1.Generate(args);
-			obj0.Lock();
-			obj1.Lock();
-			system(obj0, obj1);
-			obj0.Unlock();
-			obj1.Unlock();
-		};
-		var sys = new FuncSystem<World>(_world, fn, checkInuse, threadingType);
-		Add(sys, stage);
-		return sys;
-	}
 
 	public Scheduler AddPlugin<T>() where T : notnull, IPlugin, new()
 		=> AddPlugin(new T());
@@ -390,10 +365,24 @@ public sealed class FlecsWorld : SystemParam, IIntoSystemParam<World>
     }
 }
 
-public sealed class Query<TQueryData> : Query<TQueryData, Empty>
+public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemParam<World>
 	where TQueryData : IData
 {
 	internal Query(Query query) : base(query) { }
+
+	public static new ISystemParam<World> Generate(World arg)
+    {
+		if (arg.Has<Query<TQueryData>>())
+			return arg.Get<Query<TQueryData>>();
+
+		var builder = arg.QueryBuilder();
+		TQueryData.AppendTerm(ref builder);
+
+		var q = new Query<TQueryData>(builder.Build());
+		arg.Set(q);
+
+		return q;
+    }
 }
 
 public partial class Query<TQueryData, TQueryFilter> : SystemParam, IIntoSystemParam<World>
@@ -404,17 +393,10 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam, IIntoSystemP
 
 	internal Query(Query query) => _query = query;
 
-	public QueryIterator<T0, T1> Iter<T0, T1>()
-		where T0 : struct
-		where T1 : struct
-	{
-		return new QueryIterator<T0, T1>(_query);
-	}
-
     public static ISystemParam<World> Generate(World arg)
     {
-		if (arg.Has<Query<TQueryData>>())
-			return arg.Get<Query<TQueryData>>();
+		if (arg.Has<Query<TQueryData, TQueryFilter>>())
+			return arg.Get<Query<TQueryData, TQueryFilter>>();
 
 		var builder = arg.QueryBuilder();
 		TQueryData.AppendTerm(ref builder);
@@ -498,60 +480,12 @@ public sealed class Local<T> : SystemParam, IIntoSystemParam<World> where T : no
 // }
 
 
-
-
-public unsafe ref struct QueryIterator<T0, T1>
-	where T0 : struct
-	where T1 : struct
+public interface IQueryIterator<T> where T: IData
 {
-	private NET.Bindings.flecs.ecs_iter_t _ecsIt;
-	private readonly Query _query;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal QueryIterator(Query query)
-	{
-		_query = query;
-		_ecsIt = query.GetIter();
-	}
-
-	[UnscopedRef]
-	public ref QueryIterator<T0, T1> Current => ref this;
-
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void Deconstruct(out Field<T0> field0, out Field<T1> field1)
-	{
-		fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
-		{
-			var iter = new Iter(ptr);
-			field0 = iter.Field<T0>(0);
-			field1 = iter.Field<T1>(1);
-		}
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void Deconstruct(out Field<ulong> entities, out Field<T0> field0, out Field<T1> field1)
-	{
-		fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
-		{
-			var iter = new Iter(ptr);
-			entities = iter.Entities();
-			field0 = iter.Field<T0>(0);
-			field1 = iter.Field<T1>(1);
-		}
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool MoveNext()
-	{
-		fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
-			return _query.GetNext(ptr);
-	}
-
-	public readonly QueryIterator<T0, T1> GetEnumerator() => this;
+	public IQueryIterator<T> Current { get; }
+	public bool MoveNext();
+	public IQueryIterator<T> GetEnumerator();
 }
-
-
 
 
 public interface ITermCreator
@@ -559,30 +493,12 @@ public interface ITermCreator
 	public static abstract void AppendTerm(ref QueryBuilder builder);
 }
 
-public interface IData : ITermCreator { }
+public interface IData : ITermCreator
+{
+}
+
 public interface IFilter : ITermCreator { }
 
-
-public struct Data<T0, T1> : IData
-	where T0 : struct
-	where T1 : struct
-{
-	public static void AppendTerm(ref QueryBuilder builder)
-	{
-		builder.With<T0>().With<T1>();
-	}
-}
-
-public struct Filter<T0, T1> : IFilter
-	where T0 : IFilter
-	where T1 : IFilter
-{
-	public static void AppendTerm(ref QueryBuilder builder)
-	{
-		T0.AppendTerm(ref builder);
-		T1.AppendTerm(ref builder);
-	}
-}
 
 public readonly struct Empty : IFilter
 {

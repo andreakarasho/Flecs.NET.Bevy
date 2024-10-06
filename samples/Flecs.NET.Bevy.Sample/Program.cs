@@ -7,8 +7,12 @@ var scheduler = new Scheduler(ecs);
 
 scheduler.AddSystem((Query<Data<Position, Velocity>> query, Res<int> res) =>
 {
+    // foreach ((var pos, var vel) in query)
+    // {
 
+    // }
 });
+
 
 
 scheduler.Run();
