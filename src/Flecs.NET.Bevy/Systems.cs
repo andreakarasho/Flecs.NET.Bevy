@@ -376,7 +376,7 @@ public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemPar
 			return arg.Get<Query<TQueryData>>();
 
 		var builder = arg.QueryBuilder();
-		TQueryData.AppendTerm(ref builder);
+		TQueryData.Build(ref builder);
 
 		var q = new Query<TQueryData>(builder.Build());
 		arg.Set(q);
@@ -399,14 +399,16 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam, IIntoSystemP
 			return arg.Get<Query<TQueryData, TQueryFilter>>();
 
 		var builder = arg.QueryBuilder();
-		TQueryData.AppendTerm(ref builder);
-		TQueryFilter.AppendTerm(ref builder);
+		TQueryData.Build(ref builder);
+		TQueryFilter.Build(ref builder);
 
 		var q = new Query<TQueryData, TQueryFilter>(builder.Build());
 		arg.Set(q);
 
 		return q;
     }
+
+	public QueryIterator GetEnumerator() => new (_query);
 }
 
 public sealed class Res<T> : SystemParam, IIntoSystemParam<World> where T : notnull
@@ -480,29 +482,18 @@ public sealed class Local<T> : SystemParam, IIntoSystemParam<World> where T : no
 // }
 
 
-public interface IQueryIterator<T> where T: IData
-{
-	public IQueryIterator<T> Current { get; }
-	public bool MoveNext();
-	public IQueryIterator<T> GetEnumerator();
-}
-
 
 public interface ITermCreator
 {
-	public static abstract void AppendTerm(ref QueryBuilder builder);
+	public static abstract void Build(ref QueryBuilder builder);
 }
 
-public interface IData : ITermCreator
-{
-}
-
+public interface IData : ITermCreator { }
 public interface IFilter : ITermCreator { }
-
 
 public readonly struct Empty : IFilter
 {
-    public static void AppendTerm(ref QueryBuilder builder)
+    public static void Build(ref QueryBuilder builder)
     {
 
     }
@@ -510,7 +501,7 @@ public readonly struct Empty : IFilter
 public readonly struct With<T> : IFilter
 	where T : struct
 {
-    public static void AppendTerm(ref QueryBuilder builder)
+    public static void Build(ref QueryBuilder builder)
     {
 		builder.With<T>().InOutNone();
     }
@@ -518,7 +509,7 @@ public readonly struct With<T> : IFilter
 public readonly struct Without<T> : IFilter
 	where T : struct
 {
-	public static void AppendTerm(ref QueryBuilder builder)
+	public static void Build(ref QueryBuilder builder)
     {
 		builder.Without<T>();
     }
@@ -526,8 +517,38 @@ public readonly struct Without<T> : IFilter
 public readonly struct Optional<T> : IFilter
 	where T : struct
 {
-	public static void AppendTerm(ref QueryBuilder builder)
+	public static void Build(ref QueryBuilder builder)
     {
 		builder.With<T>().Optional();
     }
+}
+
+public unsafe ref struct QueryIterator
+{
+	private readonly Query _query;
+	private NET.Bindings.flecs.ecs_iter_t _ecsIt;
+
+	internal QueryIterator(Query query)
+	{
+		_query = query;
+		_ecsIt = query.GetIter();
+	}
+
+	public Iter Current
+	{
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		get
+		{
+			fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
+				return new Iter(ptr);
+		}
+	}
+
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public bool MoveNext()
+	{
+		fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
+			return _query.GetNext(ptr);
+	}
 }
