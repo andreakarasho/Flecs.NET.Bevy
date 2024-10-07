@@ -366,7 +366,7 @@ public sealed class FlecsWorld : SystemParam, IIntoSystemParam<World>
 }
 
 public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemParam<World>
-	where TQueryData : IData
+	where TQueryData : struct, IData
 {
 	internal Query(Query query) : base(query) { }
 
@@ -386,8 +386,8 @@ public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemPar
 }
 
 public partial class Query<TQueryData, TQueryFilter> : SystemParam, IIntoSystemParam<World>
-	where TQueryData : IData
-	where TQueryFilter : IFilter
+	where TQueryData : struct, IData
+	where TQueryFilter : struct, IFilter
 {
 	private readonly Query _query;
 
@@ -399,8 +399,9 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam, IIntoSystemP
 			return arg.Get<Query<TQueryData, TQueryFilter>>();
 
 		var builder = arg.QueryBuilder();
+
 		TQueryData.Build(ref builder);
-		TQueryFilter.Build(ref builder);
+		TQueryFilter.Build(builder: ref builder);
 
 		var q = new Query<TQueryData, TQueryFilter>(builder.Build());
 		arg.Set(q);
@@ -482,6 +483,7 @@ public sealed class Local<T> : SystemParam, IIntoSystemParam<World> where T : no
 // }
 
 
+public interface IComponent { }
 
 public interface ITermCreator
 {
@@ -490,38 +492,105 @@ public interface ITermCreator
 
 public interface IData : ITermCreator { }
 public interface IFilter : ITermCreator { }
+public interface INestedFilter
+{
+	void BuildAsParam(ref QueryBuilder builder);
+}
 
-public readonly struct Empty : IFilter
+internal static class FilterBuilder<T> where T : struct
+{
+	public static bool Build(ref QueryBuilder builder)
+	{
+		if (default(T) is INestedFilter nestedFilter)
+		{
+			nestedFilter.BuildAsParam(ref builder);
+			return true;
+		}
+
+		return false;
+	}
+}
+
+public readonly struct Wildcard : IComponent { }
+
+public readonly struct Empty : IData, IComponent, IFilter
 {
     public static void Build(ref QueryBuilder builder)
     {
 
     }
 }
-public readonly struct With<T> : IFilter
-	where T : struct
+public readonly struct With<T> : IFilter, INestedFilter
+	where T : struct, IComponent
 {
     public static void Build(ref QueryBuilder builder)
     {
-		builder.With<T>().InOutNone();
+		if (!FilterBuilder<T>.Build(ref builder))
+			builder.With<T>().InOutNone();
+		else
+			builder.Oper(Bindings.flecs.ecs_oper_kind_t.EcsAnd).InOutNone();
+    }
+
+    public void BuildAsParam(ref QueryBuilder builder)
+    {
+		Build(ref builder);
     }
 }
-public readonly struct Without<T> : IFilter
-	where T : struct
+public readonly struct Without<T> : IFilter, INestedFilter
+	where T : struct, IComponent
 {
 	public static void Build(ref QueryBuilder builder)
     {
-		builder.Without<T>();
+		if (!FilterBuilder<T>.Build(ref builder))
+			builder.Without<T>().InOutNone();
+		else
+			builder.Oper(Bindings.flecs.ecs_oper_kind_t.EcsNot).InOutNone();
+    }
+
+    public void BuildAsParam(ref QueryBuilder builder)
+    {
+		Build(ref builder);
     }
 }
-public readonly struct Optional<T> : IFilter
-	where T : struct
+public readonly struct Optional<T> : IFilter, INestedFilter
+	where T : struct, IComponent
 {
 	public static void Build(ref QueryBuilder builder)
     {
-		builder.With<T>().Optional();
+		if (!FilterBuilder<T>.Build(ref builder))
+			builder.With<T>().Optional();
+		else
+			builder.Optional();
+    }
+
+	public void BuildAsParam(ref QueryBuilder builder)
+    {
+		Build(ref builder);
     }
 }
+public readonly struct Pair<TFirst, TSecond> : IComponent, IFilter, INestedFilter
+	where TFirst : struct, IComponent
+	where TSecond : struct, IComponent
+{
+	public static void Build(ref QueryBuilder builder)
+    {
+		if (typeof(TFirst) == typeof(Wildcard))
+			builder.With(Ecs.Wildcard);
+		else
+			builder.With<TFirst>();
+
+		if (typeof(TSecond) == typeof(Wildcard))
+			builder.Second(Ecs.Wildcard);
+		else
+			builder.Second<TSecond>();
+    }
+
+	public void BuildAsParam(ref QueryBuilder builder)
+    {
+		Build(ref builder);
+    }
+}
+
 
 public unsafe ref struct QueryIterator
 {

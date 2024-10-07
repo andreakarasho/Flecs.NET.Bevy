@@ -66,7 +66,7 @@ public sealed class MyGenerator : IIncrementalGenerator
         for (var i = 0; i < MAX_PARAMS; ++i)
         {
             var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct");
+            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : IComponent");
 
             sb.AppendLine($@"
                 public QueryIterator<{genericsArgs}>Iter<{genericsArgs}>() {genericsArgsWhere}
@@ -87,7 +87,7 @@ public sealed class MyGenerator : IIncrementalGenerator
         for (var i = 0; i < MAX_PARAMS; ++i)
         {
             var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct");
+            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : IComponent");
             var queryAssignFields = GenerateSequence(i + 1, "\n", j => $"field{j} = iter.Field<T{j}>({j});");
             var queryDctorFields = GenerateSequence(i + 1, ", ", j => $"out Field<T{j}> field{j}");
 
@@ -140,8 +140,8 @@ public sealed class MyGenerator : IIncrementalGenerator
         for (var i = 0; i < MAX_PARAMS; ++i)
         {
             var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct");
-            var queryBuilderCalls = GenerateSequence(i + 1, "\n", j => $"builder.With<T{j}>();");
+            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct, IComponent");
+            var queryBuilderCalls = GenerateSequence(i + 1, "\n", j => $"if (!FilterBuilder<T{j}>.Build(ref builder)) builder.With<T{j}>();");
 
             sb.AppendLine($@"
                 public readonly struct Data<{genericsArgs}> : IData
@@ -158,8 +158,8 @@ public sealed class MyGenerator : IIncrementalGenerator
         for (var i = 0; i < MAX_PARAMS; ++i)
         {
             var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : IFilter");
-            var appendTermsCalls = GenerateSequence(i + 1, "\n", j => $"T{j}.Build(ref builder);");
+            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct, IFilter");
+            var appendTermsCalls = GenerateSequence(i + 1, "\n", j => $"if (!FilterBuilder<T{j}>.Build(ref builder)) T{j}.Build(ref builder);");
 
             sb.AppendLine($@"
                 public readonly struct Filter<{genericsArgs}> : IFilter
