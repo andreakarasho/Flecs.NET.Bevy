@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-		<ProjectReference Include="..\Flecs.NET.Bevy.Generators\Flecs.NET.Bevy.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-	</ItemGroup>
+	<ProjectReference Include="..\Flecs.NET.Bevy.Generators\Flecs.NET.Bevy.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
 
 </Project>
