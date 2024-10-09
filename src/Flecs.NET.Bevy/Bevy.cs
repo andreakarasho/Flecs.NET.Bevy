@@ -233,11 +233,6 @@ public sealed partial class Scheduler
 	{
 		return _world.Has<T>();
 	}
-
-    public void New(Scheduler arguments)
-    {
-        throw new NotImplementedException();
-    }
 }
 
 public interface IPlugin
@@ -552,7 +547,7 @@ public readonly struct Without<T> : IFilter, INestedFilter
 		Build(ref builder);
     }
 }
-public readonly struct Optional<T> : IFilter, INestedFilter
+public readonly struct Optional<T> : IData, INestedFilter
 	where T : struct, IComponent
 {
 	public static void Build(ref QueryBuilder builder)
