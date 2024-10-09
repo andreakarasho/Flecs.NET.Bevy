@@ -19,47 +19,46 @@ var scheduler = new Scheduler(ecs);
 
 scheduler.AddSystem((
     Query<
-        Data<Position>,
-        Filter<With<Pair<PlayerTag, Wildcard>>>
-    > query, Res<int> res) =>
+        Data<Position, Velocity>,
+        Filter<With<Pair<PlayerTag, Wildcard>>>> query, Res<int> res) =>
 {
-    // foreach ((var entities, var field0, var field1) in query.Iter<Position, Velocity>())
-    // {
-    //     var count = entities.Length;
-
-    //     for (var i = 0; i < count; ++i)
-    //     {
-    //         ref var pos = ref field0[i];
-    //         ref var vel = ref field1[i];
-
-    //         pos.X *= vel.X;
-    //         pos.Y *= vel.Y;
-    //     }
-    // }
-
-    foreach (var it in query)
+    foreach ((var entities, var field0, var field1) in query.Iter<Position, Velocity>())
     {
-        var count = it.Count();
-        // Entity pair = it.Pair(1).Second();
+        var count = entities.Length;
 
-        var field0 = it.Field<Position>(0);
-
-        foreach (var i in it)
+        for (var i = 0; i < count; ++i)
         {
+            ref var pos = ref field0[i];
+            ref var vel = ref field1[i];
 
+            pos.X *= vel.X;
+            pos.Y *= vel.Y;
         }
-
-        // var field1 = it.Field<Velocity>(1);
-
-        // for (var i = 0; i < count; ++i)
-        // {
-        //     ref var pos = ref field0[i];
-        //     ref var vel = ref field1[i];
-
-        //     pos.X *= vel.X;
-        //     pos.Y *= vel.Y;
-        // }
     }
+
+    //foreach (var it in query)
+    //{
+    //    var count = it.Count();
+    //    // Entity pair = it.Pair(1).Second();
+
+    //    var field0 = it.Field<Position>(0);
+
+    //    foreach (var i in it)
+    //    {
+
+    //    }
+
+    //    // var field1 = it.Field<Velocity>(1);
+
+    //    // for (var i = 0; i < count; ++i)
+    //    // {
+    //    //     ref var pos = ref field0[i];
+    //    //     ref var vel = ref field1[i];
+
+    //    //     pos.X *= vel.X;
+    //    //     pos.Y *= vel.Y;
+    //    // }
+    //}
 });
 
 

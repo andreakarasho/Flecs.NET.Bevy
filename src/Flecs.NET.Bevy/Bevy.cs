@@ -132,13 +132,10 @@ public sealed partial class Scheduler
 		for (var i = 0; i < _systems.Length; ++i)
 			_systems[i] = new ();
 
-		// AddSystemParam(new FlecsWorld());
-		// AddSystemParam(new SchedulerState(this));
+		 AddSystemParam(new FlecsWorld(world));
+		 AddSystemParam(new SchedulerState(this));
 	}
 
-
-	// public bool IsState<TState>(TState state) where TState : Enum =>
-	// 	ISystemParam.Get<Res<TState>>(_resources, _resources, null!)?.Value?.Equals(state) ?? false;
 
     public void Run()
     {
@@ -240,10 +237,10 @@ public interface IPlugin
 	void Build(Scheduler scheduler);
 }
 
-public abstract class SystemParam : ISystemParam<World>
+public abstract class SystemParam<T> : ISystemParam<T>
 {
-	private int _useIndex;
-	ref int ISystemParam.UseIndex => ref _useIndex;
+    private int _useIndex;
+    ref int ISystemParam.UseIndex => ref _useIndex;
 }
 
 public interface ISystemParam
@@ -265,84 +262,97 @@ public interface IIntoSystemParam<TArg>
 }
 
 
-public sealed class EventWriter<T> : SystemParam, IIntoSystemParam<World> where T : notnull
+internal sealed class EventParam<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
 {
-	private readonly Queue<T>? _queue;
+    private readonly Queue<T> _queue = new();
 
-	internal EventWriter(Queue<T> queue)
-		=> _queue = queue;
+    internal EventParam()
+    {
+        Writer = new EventWriter<T>(_queue);
+        Reader = new EventReader<T>(_queue);
+    }
 
-	public EventWriter()
-		=> throw new Exception("EventWriter must be initialized using the 'scheduler.AddEvent<T>' api");
+    public EventWriter<T> Writer { get; }
+    public EventReader<T> Reader { get; }
 
-	public bool IsEmpty
-		=> _queue!.Count == 0;
-
-	public void Clear()
-		=> _queue?.Clear();
-
-	public void Enqueue(T ev)
-		=> _queue!.Enqueue(ev);
 
     public static ISystemParam<World> Generate(World arg)
     {
-		if (arg.Has<EventWriter<T>>())
-			return arg.Get<EventWriter<T>>();
+        if (arg.Has<EventParam<T>>())
+            return arg.Get<EventParam<T>>();
 
-		var writer = new EventWriter<T>();
-		arg.Set(writer);
-
-		return writer;
+        var ev = new EventParam<T>();
+        arg.Set(ev);
+        return ev;
     }
 }
 
-public sealed class EventReader<T> : SystemParam, IIntoSystemParam<World> where T : notnull
+public sealed class EventWriter<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
 {
-	private readonly Queue<T>? _queue;
+    private readonly Queue<T> _queue;
 
-	internal EventReader(Queue<T> queue)
-		=> _queue = queue;
+    internal EventWriter(Queue<T> queue)
+        => _queue = queue;
 
-	public EventReader()
-		=> throw new Exception("EventReader must be initialized using the 'scheduler.AddEvent<T>' api");
+    public bool IsEmpty
+        => _queue.Count == 0;
 
-	public bool IsEmpty
-		=> _queue!.Count == 0;
+    public void Clear()
+        => _queue.Clear();
 
-	public void Clear()
-		=> _queue?.Clear();
+    public void Enqueue(T ev)
+        => _queue.Enqueue(ev);
 
-	public EventReaderIterator GetEnumerator() => new (_queue!);
-
-	public static ISystemParam<World> Generate(World arg)
+    public static ISystemParam<World> Generate(World arg)
     {
-		if (arg.Has<EventReader<T>>())
-			return arg.Get<EventReader<T>>();
+        if (arg.Has<EventParam<T>>())
+            return arg.Get<EventParam<T>>().Writer;
 
-		var reader = new EventReader<T>();
-		arg.Set(reader);
-
-		return reader;
+        throw new NotImplementedException("EventWriter<T> must be created using the scheduler.AddEvent<T>() method");
     }
-
-	public ref struct EventReaderIterator
-	{
-		private readonly Queue<T> _queue;
-		private T? _data;
-
-		internal EventReaderIterator(Queue<T> queue)
-		{
-			_queue = queue;
-			_data = default!;
-		}
-
-		public readonly T? Current => _data;
-
-		public bool MoveNext() => _queue.TryDequeue(out _data);
-	}
 }
 
-public sealed class FlecsWorld : SystemParam, IIntoSystemParam<World>
+public sealed class EventReader<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
+{
+    private readonly Queue<T> _queue;
+
+    internal EventReader(Queue<T> queue)
+        => _queue = queue;
+
+    public bool IsEmpty
+        => _queue.Count == 0;
+
+    public void Clear()
+        => _queue.Clear();
+
+    public EventReaderIterator GetEnumerator() => new(_queue!);
+
+    public static ISystemParam<World> Generate(World arg)
+    {
+        if (arg.Has<EventParam<T>>())
+            return arg.Get<EventParam<T>>().Reader;
+
+        throw new NotImplementedException("EventReader<T> must be created using the scheduler.AddEvent<T>() method");
+    }
+
+    public ref struct EventReaderIterator
+    {
+        private readonly Queue<T> _queue;
+        private T _data;
+
+        internal EventReaderIterator(Queue<T> queue)
+        {
+            _queue = queue;
+            _data = default!;
+        }
+
+        public readonly T Current => _data;
+
+        public bool MoveNext() => _queue.TryDequeue(out _data);
+    }
+}
+
+public sealed class FlecsWorld : SystemParam<World>, IIntoSystemParam<World>
 {
 	internal FlecsWorld(World world) => Flecs = world;
 
@@ -380,7 +390,7 @@ public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemPar
     }
 }
 
-public partial class Query<TQueryData, TQueryFilter> : SystemParam, IIntoSystemParam<World>
+public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoSystemParam<World>
 	where TQueryData : struct, IData
 	where TQueryFilter : struct, IFilter
 {
@@ -405,9 +415,35 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam, IIntoSystemP
     }
 
 	public QueryIterator GetEnumerator() => new (_query);
+
+	public int Count() => _query.Count();
+
+	public Entity Single()
+	{
+		var count = Count();
+		if (count != 1)
+			throw new Exception("query must match only one entity");
+
+		foreach (var it in this)
+			return it.Entity(0);
+
+		return Entity.Null();
+	}
+
+	public ref T Single<T>(int fieldIndex) where T : IComponent
+	{
+        var count = Count();
+        if (count != 1)
+            throw new Exception("query must match only one entity");
+
+		foreach (var it in this)
+			return ref it.Field<T>(fieldIndex)[0];
+
+		return ref Unsafe.NullRef<T>();
+    }
 }
 
-public sealed class Res<T> : SystemParam, IIntoSystemParam<World> where T : notnull
+public sealed class Res<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
 {
 	private T? _t;
 
@@ -426,11 +462,11 @@ public sealed class Res<T> : SystemParam, IIntoSystemParam<World> where T : notn
 		var res = new Res<T>();
 		arg.Set(res);
 
-		return res; ;
+		return res;
     }
 }
 
-public sealed class Local<T> : SystemParam, IIntoSystemParam<World> where T : notnull
+public sealed class Local<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
 {
 	private T? _t;
 
@@ -447,35 +483,28 @@ public sealed class Local<T> : SystemParam, IIntoSystemParam<World> where T : no
     }
 }
 
-// public sealed class SchedulerState : SystemParam, IIntoSystemParam<Scheduler>
-// {
-// 	private readonly Scheduler _scheduler;
+public sealed class SchedulerState : SystemParam<World>, IIntoSystemParam<World>
+{
+    private readonly Scheduler _scheduler;
 
-// 	internal SchedulerState(Scheduler scheduler)
-// 	{
-// 		_scheduler = scheduler;
-// 	}
+    internal SchedulerState(Scheduler scheduler)
+    {
+        _scheduler = scheduler;
+    }
 
-// 	public SchedulerState()
-// 		=> throw new Exception("You are not allowed to initialize this object by yourself!");
+    public void AddResource<T>(T resource) where T : notnull
+        => _scheduler.AddResource(resource);
 
-// 	public void AddResource<T>(T resource) where T : notnull
-// 		=> _scheduler.AddResource(resource);
+    public bool ResourceExists<T>() where T : notnull
+        => _scheduler.ResourceExists<Res<T>>();
 
-// 	public bool ResourceExists<T>() where T : notnull
-// 		=> _scheduler.ResourceExists<Res<T>>();
-
-//     public static ISystemParam<Scheduler> Generate(Scheduler arg)
-//     {
-// 		return new SchedulerState(arg);
-//     }
-
-
-//     public void New(Scheduler arguments)
-//     {
-//         throw new NotImplementedException();
-//     }
-// }
+    public static ISystemParam<World> Generate(World arg)
+    {
+        if (arg.Has<SchedulerState>())
+            return arg.Get<SchedulerState>();
+        throw new NotImplementedException();
+    }
+}
 
 
 public interface IComponent { }
@@ -515,6 +544,7 @@ public readonly struct Empty : IData, IComponent, IFilter
 
     }
 }
+
 public readonly struct With<T> : IFilter, INestedFilter
 	where T : struct, IComponent
 {
@@ -531,6 +561,7 @@ public readonly struct With<T> : IFilter, INestedFilter
 		Build(ref builder);
     }
 }
+
 public readonly struct Without<T> : IFilter, INestedFilter
 	where T : struct, IComponent
 {
@@ -547,6 +578,7 @@ public readonly struct Without<T> : IFilter, INestedFilter
 		Build(ref builder);
     }
 }
+
 public readonly struct Optional<T> : IData, INestedFilter
 	where T : struct, IComponent
 {
@@ -563,6 +595,7 @@ public readonly struct Optional<T> : IData, INestedFilter
 		Build(ref builder);
     }
 }
+
 public readonly struct Pair<TFirst, TSecond> : IComponent, IFilter, INestedFilter
 	where TFirst : struct, IComponent
 	where TSecond : struct, IComponent
@@ -607,7 +640,6 @@ public unsafe ref struct QueryIterator
 				return new Iter(ptr);
 		}
 	}
-
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool MoveNext()
