@@ -185,9 +185,9 @@ public sealed class MyGenerator : IIncrementalGenerator
         for (var i = 0; i < MAX_PARAMS; ++i)
         {
             var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : class, ISystemParam<World>, IIntoSystemParam<World>");
+            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : class, ISystemParam<World>, IIntoSystemParam<World, T{j}>");
             var objs = GenerateSequence(i + 1, "\n", j => $"T{j}? obj{j} = null;");
-            var objsGen = GenerateSequence(i + 1, "\n", j => $"obj{j} ??= (T{j})T{j}.Generate(args);");
+            var objsGen = GenerateSequence(i + 1, "\n", j => $"obj{j} ??= T{j}.Generate(args);");
             var objsLock = GenerateSequence(i + 1, "\n", j => $"obj{j}.Lock();");
             var objsUnlock = GenerateSequence(i + 1, "\n", j => $"obj{j}.Unlock();");
             var systemCall = GenerateSequence(i + 1, ", ", j => $"obj{j}");

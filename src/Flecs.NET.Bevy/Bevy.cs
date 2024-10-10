@@ -256,13 +256,13 @@ public interface ISystemParam<TParam> : ISystemParam
 
 }
 
-public interface IIntoSystemParam<TArg>
+public interface IIntoSystemParam<TArg, TResult> where TResult : ISystemParam<TArg>
 {
-	public static abstract ISystemParam<TArg> Generate(TArg arg);
+	public static abstract TResult Generate(TArg arg);
 }
 
 
-internal sealed class EventParam<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
+internal sealed class EventParam<T> : SystemParam<World>, IIntoSystemParam<World, EventParam<T>> where T : notnull
 {
     private readonly Queue<T> _queue = new();
 
@@ -276,7 +276,7 @@ internal sealed class EventParam<T> : SystemParam<World>, IIntoSystemParam<World
     public EventReader<T> Reader { get; }
 
 
-    public static ISystemParam<World> Generate(World arg)
+    public static EventParam<T> Generate(World arg)
     {
         if (arg.Has<EventParam<T>>())
             return arg.Get<EventParam<T>>();
@@ -287,7 +287,7 @@ internal sealed class EventParam<T> : SystemParam<World>, IIntoSystemParam<World
     }
 }
 
-public sealed class EventWriter<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
+public sealed class EventWriter<T> : SystemParam<World>, IIntoSystemParam<World, EventWriter<T>> where T : notnull
 {
     private readonly Queue<T> _queue;
 
@@ -303,7 +303,7 @@ public sealed class EventWriter<T> : SystemParam<World>, IIntoSystemParam<World>
     public void Enqueue(T ev)
         => _queue.Enqueue(ev);
 
-    public static ISystemParam<World> Generate(World arg)
+    public static EventWriter<T> Generate(World arg)
     {
         if (arg.Has<EventParam<T>>())
             return arg.Get<EventParam<T>>().Writer;
@@ -312,7 +312,7 @@ public sealed class EventWriter<T> : SystemParam<World>, IIntoSystemParam<World>
     }
 }
 
-public sealed class EventReader<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
+public sealed class EventReader<T> : SystemParam<World>, IIntoSystemParam<World, EventReader<T>> where T : notnull
 {
     private readonly Queue<T> _queue;
 
@@ -327,7 +327,7 @@ public sealed class EventReader<T> : SystemParam<World>, IIntoSystemParam<World>
 
     public EventReaderIterator GetEnumerator() => new(_queue!);
 
-    public static ISystemParam<World> Generate(World arg)
+    public static EventReader<T> Generate(World arg)
     {
         if (arg.Has<EventParam<T>>())
             return arg.Get<EventParam<T>>().Reader;
@@ -348,20 +348,20 @@ public sealed class EventReader<T> : SystemParam<World>, IIntoSystemParam<World>
 
         public readonly T Current => _data;
 
-        public bool MoveNext() => _queue.TryDequeue(out _data);
+        public bool MoveNext() => _queue.TryDequeue(out _data!);
     }
 }
 
-public sealed class FlecsWorld : SystemParam<World>, IIntoSystemParam<World>
+public sealed class FlecsWorld : SystemParam<World>, IIntoSystemParam<World, FlecsWorld>
 {
 	internal FlecsWorld(World world) => Flecs = world;
 
 	public World Flecs { get; }
 
-    public static ISystemParam<World> Generate(World arg)
+    public static FlecsWorld Generate(World arg)
     {
 		if (arg.Has<FlecsWorld>())
-			return arg.Get<FlecsWorld>();
+			return arg.GetMut<FlecsWorld>();
 
 		var flecsWorld = new FlecsWorld(arg);
 		arg.Set(flecsWorld);
@@ -370,15 +370,15 @@ public sealed class FlecsWorld : SystemParam<World>, IIntoSystemParam<World>
     }
 }
 
-public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemParam<World>
+public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemParam<World, Query<TQueryData>>
 	where TQueryData : struct, IData
 {
 	internal Query(Query query) : base(query) { }
 
-	public static new ISystemParam<World> Generate(World arg)
+	public static new Query<TQueryData> Generate(World arg)
     {
 		if (arg.Has<Query<TQueryData>>())
-			return arg.Get<Query<TQueryData>>();
+			return arg.GetMut<Query<TQueryData>>();
 
 		var builder = arg.QueryBuilder();
 		TQueryData.Build(ref builder);
@@ -390,7 +390,7 @@ public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemPar
     }
 }
 
-public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoSystemParam<World>
+public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoSystemParam<World, Query<TQueryData, TQueryFilter>>
 	where TQueryData : struct, IData
 	where TQueryFilter : struct, IFilter
 {
@@ -398,10 +398,10 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IInto
 
 	internal Query(Query query) => _query = query;
 
-    public static ISystemParam<World> Generate(World arg)
+    public static Query<TQueryData, TQueryFilter> Generate(World arg)
     {
 		if (arg.Has<Query<TQueryData, TQueryFilter>>())
-			return arg.Get<Query<TQueryData, TQueryFilter>>();
+			return arg.GetMut<Query<TQueryData, TQueryFilter>>();
 
 		var builder = arg.QueryBuilder();
 
@@ -414,7 +414,7 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IInto
 		return q;
     }
 
-	public QueryIterator GetEnumerator() => new (_query);
+	public QueryIterator GetEnumerator() => new (in _query);
 
 	public int Count() => _query.Count();
 
@@ -443,7 +443,7 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IInto
     }
 }
 
-public sealed class Res<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
+public sealed class Res<T> : SystemParam<World>, IIntoSystemParam<World, Res<T>> where T : notnull
 {
 	private T? _t;
 
@@ -454,10 +454,10 @@ public sealed class Res<T> : SystemParam<World>, IIntoSystemParam<World> where T
 	public static implicit operator T?(Res<T> reference)
 		=> reference.Value;
 
-    public static ISystemParam<World> Generate(World arg)
+    public static Res<T> Generate(World arg)
     {
 		if (arg.Has<Res<T>>())
-			return arg.Get<Res<T>>();
+			return arg.GetMut<Res<T>>();
 
 		var res = new Res<T>();
 		arg.Set(res);
@@ -466,7 +466,7 @@ public sealed class Res<T> : SystemParam<World>, IIntoSystemParam<World> where T
     }
 }
 
-public sealed class Local<T> : SystemParam<World>, IIntoSystemParam<World> where T : notnull
+public sealed class Local<T> : SystemParam<World>, IIntoSystemParam<World, Local<T>> where T : notnull
 {
 	private T? _t;
 
@@ -477,13 +477,13 @@ public sealed class Local<T> : SystemParam<World>, IIntoSystemParam<World> where
 	public static implicit operator T?(Local<T> reference)
 		=> reference.Value;
 
-    public static ISystemParam<World> Generate(World arg)
+    public static Local<T> Generate(World arg)
     {
         return new Local<T>();
     }
 }
 
-public sealed class SchedulerState : SystemParam<World>, IIntoSystemParam<World>
+public sealed class SchedulerState : SystemParam<World>, IIntoSystemParam<World, SchedulerState>
 {
     private readonly Scheduler _scheduler;
 
@@ -498,10 +498,10 @@ public sealed class SchedulerState : SystemParam<World>, IIntoSystemParam<World>
     public bool ResourceExists<T>() where T : notnull
         => _scheduler.ResourceExists<Res<T>>();
 
-    public static ISystemParam<World> Generate(World arg)
+    public static SchedulerState Generate(World arg)
     {
         if (arg.Has<SchedulerState>())
-            return arg.Get<SchedulerState>();
+            return arg.GetMut<SchedulerState>();
         throw new NotImplementedException();
     }
 }
@@ -622,12 +622,12 @@ public readonly struct Pair<TFirst, TSecond> : IComponent, IFilter, INestedFilte
 
 public unsafe ref struct QueryIterator
 {
-	private readonly Query _query;
+	private ref readonly Query _query;
 	private NET.Bindings.flecs.ecs_iter_t _ecsIt;
 
-	internal QueryIterator(Query query)
+	internal QueryIterator(ref readonly Query query)
 	{
-		_query = query;
+		_query = ref query;
 		_ecsIt = query.GetIter();
 	}
 

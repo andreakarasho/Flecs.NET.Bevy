@@ -134,7 +134,7 @@ abstract class Plugin : Flecs.NET.Core.IFlecsModule
 {
     public void InitModule(Flecs.NET.Core.World world)
     {
-        // OnBuild(world.Get<FlecsWorld>());
+         //OnBuild(world.Get<FlecsWorld>());
     }
 
     protected abstract void OnBuild(FlecsWorld world);
