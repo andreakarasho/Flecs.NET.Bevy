@@ -553,8 +553,13 @@ internal static class FilterBuilder<T> where T : struct
 
 public readonly struct Wildcard : IComponent { }
 
-public readonly struct Empty : IData<Empty>, IComponent, IFilter
+public struct Empty : IData<Empty>, IQueryIterator<Empty>, IComponent, IFilter
 {
+	private QueryIterator _iterator;
+
+	internal Empty(QueryIterator iterator) => _iterator = iterator;
+
+
     public static void Build(ref QueryBuilder builder)
     {
 
@@ -562,8 +567,22 @@ public readonly struct Empty : IData<Empty>, IComponent, IFilter
 
     public static IQueryIterator<Empty> CreateIterator(QueryIterator iterator)
     {
-        throw new NotImplementedException();
+		return new Empty(iterator);
     }
+
+	public readonly Empty Current => this;
+
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public void Deconstruct(out Field<ulong> entities, out int count)
+	{
+		entities = _iterator.Current.Entities();
+		count = _iterator.Current.Count();
+	}
+
+	public readonly IQueryIterator<Empty> GetEnumerator() => this;
+
+    public bool MoveNext() => _iterator.MoveNext();
 }
 
 public readonly struct With<T> : IFilter, INestedFilter
@@ -600,7 +619,7 @@ public readonly struct Without<T> : IFilter, INestedFilter
     }
 }
 
-public readonly struct Optional<T> : IData<Optional<T>>, INestedFilter
+public readonly struct Optional<T> : IComponent, INestedFilter
 	where T : struct, IComponent
 {
 	public static void Build(ref QueryBuilder builder)
@@ -609,11 +628,6 @@ public readonly struct Optional<T> : IData<Optional<T>>, INestedFilter
 			builder.With<T>().Optional();
 		else
 			builder.Optional();
-    }
-
-    public static IQueryIterator<Optional<T>> CreateIterator(QueryIterator iterator)
-    {
-        throw new NotImplementedException();
     }
 
     public void BuildAsParam(ref QueryBuilder builder)
@@ -673,60 +687,4 @@ public unsafe struct QueryIterator
 		fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
 			return _query.GetNext(ptr);
 	}
-}
-
-
-
-public struct Data2<T0, T1> : IData<Data2<T0, T1>>,  IQueryIterator<Data2<T0, T1>>
-	where T0 : struct, IComponent
-	where T1 : struct, IComponent
-{
-	private QueryIterator _iterator;
-
-
-	internal Data2(QueryIterator iterator)
-	{
-		_iterator = iterator;
-	}
-
-	public static void Build(ref QueryBuilder builder)
-	{
-		if (!FilterBuilder<T0>.Build(ref builder))
-			builder.With<T0>();
-		if (!FilterBuilder<T1>.Build(ref builder))
-			builder.With<T1>();
-	}
-
-    public static IQueryIterator<Data2<T0, T1>> CreateIterator(QueryIterator iterator)
-    {
-        return new Data2<T0, T1>(iterator);
-    }
-
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void Deconstruct(out Field<T0> field0, out Field<T1> field1)
-	{
-		var iter = _iterator.Current;
-		field0 = iter.Field<T0>(0);
-		field1 = iter.Field<T1>(1);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void Deconstruct(out Field<ulong> entities, out Field<T0> field0, out Field<T1> field1)
-	{
-		var iter = _iterator.Current;
-		entities = iter.Entities();
-		field0 = iter.Field<T0>(0);
-		field1 = iter.Field<T1>(1);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool MoveNext() => _iterator.MoveNext();
-
-    readonly Data2<T0, T1> IQueryIterator<Data2<T0, T1>>.Current => this;
-
-    readonly IQueryIterator<Data2<T0, T1>> IQueryIterator<Data2<T0, T1>>.GetEnumerator()
-    {
-		return this;
-    }
 }

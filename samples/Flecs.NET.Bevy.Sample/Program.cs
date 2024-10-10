@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Flecs.NET.Bevy;
 
 const int ENTITIES_COUNT = (524_288 * 2 * 1);
@@ -19,60 +20,39 @@ var scheduler = new Scheduler(ecs);
 
 scheduler.AddSystem((
     Query<
-        Data<Position, Velocity>,
+        Empty,
         Filter<With<Pair<PlayerTag, Wildcard>>>> query, Res<int> res) =>
 {
-    foreach ((var entities, var a, var b) in query.Iter())
+
+    foreach ((var entities, var count) in query.Iter())
     {
-        var count = entities.Length;
 
-        for (var i = 0; i < count; ++i)
-        {
-            ref var pos = ref a[i];
-            ref var vel = ref b[i];
-
-            pos.X *= vel.X;
-            pos.Y *= vel.Y;
-        }
     }
 
-    // foreach ((var entities, var field0, var field1) in query.Iter<Position, Velocity>())
+    // foreach ((var entities, var a, var b) in query.Iter())
     // {
     //     var count = entities.Length;
 
-    //     for (var i = 0; i < count; ++i)
+    //     ref var pos = ref a[0];
+    //     ref var vel = ref b[0];
+    //     ref var last = ref Unsafe.Add(ref pos, count);
+    //     while (Unsafe.IsAddressLessThan(ref pos, ref last))
     //     {
-    //         ref var pos = ref field0[i];
-    //         ref var vel = ref field1[i];
-
     //         pos.X *= vel.X;
     //         pos.Y *= vel.Y;
+    //         pos = ref Unsafe.Add(ref pos, 1);
+    //         vel = ref Unsafe.Add(ref vel, 1);
     //     }
+
+    //     // for (var i = 0; i < count; ++i)
+    //     // {
+    //     //     ref var pos = ref a[i];
+    //     //     ref var vel = ref b[i];
+
+    //     //     pos.X *= vel.X;
+    //     //     pos.Y *= vel.Y;
+    //     // }
     // }
-
-    //foreach (var it in query)
-    //{
-    //    var count = it.Count();
-    //    // Entity pair = it.Pair(1).Second();
-
-    //    var field0 = it.Field<Position>(0);
-
-    //    foreach (var i in it)
-    //    {
-
-    //    }
-
-    //    // var field1 = it.Field<Velocity>(1);
-
-    //    // for (var i = 0; i < count; ++i)
-    //    // {
-    //    //     ref var pos = ref field0[i];
-    //    //     ref var vel = ref field1[i];
-
-    //    //     pos.X *= vel.X;
-    //    //     pos.Y *= vel.Y;
-    //    // }
-    //}
 });
 
 
