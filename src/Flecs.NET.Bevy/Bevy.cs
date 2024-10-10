@@ -371,7 +371,7 @@ public sealed class FlecsWorld : SystemParam<World>, IIntoSystemParam<World, Fle
 }
 
 public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemParam<World, Query<TQueryData>>
-	where TQueryData : struct, IData
+	where TQueryData : struct, IData<TQueryData>
 {
 	internal Query(Query query) : base(query) { }
 
@@ -390,8 +390,8 @@ public sealed class Query<TQueryData> : Query<TQueryData, Empty>, IIntoSystemPar
     }
 }
 
-public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoSystemParam<World, Query<TQueryData, TQueryFilter>>
-	where TQueryData : struct, IData
+public class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoSystemParam<World, Query<TQueryData, TQueryFilter>>
+	where TQueryData : struct, IData<TQueryData>
 	where TQueryFilter : struct, IFilter
 {
 	private readonly Query _query;
@@ -441,6 +441,11 @@ public partial class Query<TQueryData, TQueryFilter> : SystemParam<World>, IInto
 
 		return ref Unsafe.NullRef<T>();
     }
+
+	public IQueryIterator<TQueryData> Iter()
+	{
+		return TQueryData.CreateIterator(GetEnumerator());
+	}
 }
 
 public sealed class Res<T> : SystemParam<World>, IIntoSystemParam<World, Res<T>> where T : notnull
@@ -514,7 +519,18 @@ public interface ITermCreator
 	public static abstract void Build(ref QueryBuilder builder);
 }
 
-public interface IData : ITermCreator { }
+public interface IQueryIterator<TData> where TData : IData<TData>
+{
+	public IQueryIterator<TData> GetEnumerator();
+	public TData Current { get; }
+	public bool MoveNext();
+}
+
+public interface IData<TData> : ITermCreator where TData : IData<TData>
+{
+	public static abstract IQueryIterator<TData> CreateIterator(QueryIterator iterator);
+}
+
 public interface IFilter : ITermCreator { }
 public interface INestedFilter
 {
@@ -537,11 +553,16 @@ internal static class FilterBuilder<T> where T : struct
 
 public readonly struct Wildcard : IComponent { }
 
-public readonly struct Empty : IData, IComponent, IFilter
+public readonly struct Empty : IData<Empty>, IComponent, IFilter
 {
     public static void Build(ref QueryBuilder builder)
     {
 
+    }
+
+    public static IQueryIterator<Empty> CreateIterator(QueryIterator iterator)
+    {
+        throw new NotImplementedException();
     }
 }
 
@@ -579,7 +600,7 @@ public readonly struct Without<T> : IFilter, INestedFilter
     }
 }
 
-public readonly struct Optional<T> : IData, INestedFilter
+public readonly struct Optional<T> : IData<Optional<T>>, INestedFilter
 	where T : struct, IComponent
 {
 	public static void Build(ref QueryBuilder builder)
@@ -590,7 +611,12 @@ public readonly struct Optional<T> : IData, INestedFilter
 			builder.Optional();
     }
 
-	public void BuildAsParam(ref QueryBuilder builder)
+    public static IQueryIterator<Optional<T>> CreateIterator(QueryIterator iterator)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void BuildAsParam(ref QueryBuilder builder)
     {
 		Build(ref builder);
     }
@@ -620,14 +646,14 @@ public readonly struct Pair<TFirst, TSecond> : IComponent, IFilter, INestedFilte
 }
 
 
-public unsafe ref struct QueryIterator
+public unsafe struct QueryIterator
 {
-	private ref readonly Query _query;
+	private Query _query;
 	private NET.Bindings.flecs.ecs_iter_t _ecsIt;
 
 	internal QueryIterator(ref readonly Query query)
 	{
-		_query = ref query;
+		_query = query;
 		_ecsIt = query.GetIter();
 	}
 
@@ -647,4 +673,60 @@ public unsafe ref struct QueryIterator
 		fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
 			return _query.GetNext(ptr);
 	}
+}
+
+
+
+public struct Data2<T0, T1> : IData<Data2<T0, T1>>,  IQueryIterator<Data2<T0, T1>>
+	where T0 : struct, IComponent
+	where T1 : struct, IComponent
+{
+	private QueryIterator _iterator;
+
+
+	internal Data2(QueryIterator iterator)
+	{
+		_iterator = iterator;
+	}
+
+	public static void Build(ref QueryBuilder builder)
+	{
+		if (!FilterBuilder<T0>.Build(ref builder))
+			builder.With<T0>();
+		if (!FilterBuilder<T1>.Build(ref builder))
+			builder.With<T1>();
+	}
+
+    public static IQueryIterator<Data2<T0, T1>> CreateIterator(QueryIterator iterator)
+    {
+        return new Data2<T0, T1>(iterator);
+    }
+
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public void Deconstruct(out Field<T0> field0, out Field<T1> field1)
+	{
+		var iter = _iterator.Current;
+		field0 = iter.Field<T0>(0);
+		field1 = iter.Field<T1>(1);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public void Deconstruct(out Field<ulong> entities, out Field<T0> field0, out Field<T1> field1)
+	{
+		var iter = _iterator.Current;
+		entities = iter.Entities();
+		field0 = iter.Field<T0>(0);
+		field1 = iter.Field<T1>(1);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public bool MoveNext() => _iterator.MoveNext();
+
+    readonly Data2<T0, T1> IQueryIterator<Data2<T0, T1>>.Current => this;
+
+    readonly IQueryIterator<Data2<T0, T1>> IQueryIterator<Data2<T0, T1>>.GetEnumerator()
+    {
+		return this;
+    }
 }

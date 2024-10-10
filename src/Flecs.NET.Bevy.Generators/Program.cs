@@ -16,29 +16,9 @@ public sealed class MyGenerator : IIncrementalGenerator
     {
         context.RegisterPostInitializationOutput((IncrementalGeneratorPostInitializationContext postContext) =>
 		{
-			postContext.AddSource($"{NAMESPACE_NAME}.QueryIterators.g.cs", CodeFormatter.Format(GenerateQueryIterators()));
 			postContext.AddSource($"{NAMESPACE_NAME}.Systems.g.cs", CodeFormatter.Format(GenerateSystems()));
 		});
     }
-
-    private string GenerateQueryIterators()
-    {
-        return $@"
-                #pragma warning disable 1591
-                #nullable enable
-
-                {DEFAULT_USINGS}
-
-                namespace {NAMESPACE_NAME}
-                {{
-                    {CreateQueryIteratorMethods()}
-                    {CreateQueryIteratorStructs()}
-                }}
-
-                #pragma warning restore 1591
-            ";
-    }
-
 
     private string GenerateSystems()
     {
@@ -58,81 +38,6 @@ public sealed class MyGenerator : IIncrementalGenerator
             ";
     }
 
-    private string CreateQueryIteratorMethods()
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("public partial class Query<TQueryData, TQueryFilter> {");
-
-        for (var i = 0; i < MAX_PARAMS; ++i)
-        {
-            var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : IComponent");
-
-            sb.AppendLine($@"
-                public QueryIterator<{genericsArgs}>Iter<{genericsArgs}>() {genericsArgsWhere}
-                {{
-                    return new (GetEnumerator());
-                }}
-            ");
-        }
-        sb.AppendLine("}");
-
-        return sb.ToString();
-    }
-
-    private string CreateQueryIteratorStructs()
-    {
-        var sb = new StringBuilder();
-
-        for (var i = 0; i < MAX_PARAMS; ++i)
-        {
-            var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : IComponent");
-            var queryAssignFields = GenerateSequence(i + 1, "\n", j => $"field{j} = iter.Field<T{j}>({j});");
-            var queryDctorFields = GenerateSequence(i + 1, ", ", j => $"out Field<T{j}> field{j}");
-
-            sb.AppendLine($@"
-                public ref struct QueryIterator<{genericsArgs}>
-                    {genericsArgsWhere}
-                {{
-                    private QueryIterator _iterator;
-
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    internal QueryIterator(QueryIterator iterator)
-                    {{
-                        _iterator = iterator;
-                    }}
-
-                    [UnscopedRef]
-                    public ref QueryIterator<{genericsArgs}> Current => ref this;
-
-
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    public void Deconstruct({queryDctorFields})
-                    {{
-                        var iter = _iterator.Current;
-                        {queryAssignFields}
-                    }}
-
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    public void Deconstruct(out Field<ulong> entities, {queryDctorFields})
-                    {{
-                        var iter = _iterator.Current;
-                        entities = iter.Entities();
-                        {queryAssignFields}
-                    }}
-
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    public bool MoveNext() => _iterator.MoveNext();
-
-                    public readonly QueryIterator<{genericsArgs}> GetEnumerator() => this;
-                }}
-            ");
-        }
-
-        return sb.ToString();
-    }
-
     private string CreateDataAndFilterStructs()
     {
         var sb = new StringBuilder();
@@ -142,15 +47,46 @@ public sealed class MyGenerator : IIncrementalGenerator
             var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
             var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct, IComponent");
             var queryBuilderCalls = GenerateSequence(i + 1, "\n", j => $"if (!FilterBuilder<T{j}>.Build(ref builder)) builder.With<T{j}>();");
+            var fieldSign = GenerateSequence(i + 1, ", ", j => $"out Field<T{j}> field{j}");
+            var fieldAssignments = GenerateSequence(i + 1, "\n", j => $"field{j} = iter.Field<T{j}>({j});");
 
             sb.AppendLine($@"
-                public readonly struct Data<{genericsArgs}> : IData
+                public struct Data<{genericsArgs}> : IData<Data<{genericsArgs}>>, IQueryIterator<Data<{genericsArgs}>>
                     {genericsArgsWhere}
                 {{
+                    private QueryIterator _iterator;
+
+                    internal Data(QueryIterator iterator) => _iterator = iterator;
+
                     public static void Build(ref QueryBuilder builder)
                     {{
                         {queryBuilderCalls}
                     }}
+
+                    public static IQueryIterator<Data<{genericsArgs}>> CreateIterator(QueryIterator iterator)
+                        => new Data<{genericsArgs}>(iterator);
+
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    public void Deconstruct({fieldSign})
+                    {{
+                        var iter = _iterator.Current;
+                        {fieldAssignments}
+                    }}
+
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    public void Deconstruct(out Field<ulong> entities, {fieldSign})
+                    {{
+                        var iter = _iterator.Current;
+                        entities = iter.Entities();
+                        {fieldAssignments}
+                    }}
+
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	                public bool MoveNext() => _iterator.MoveNext();
+
+                    readonly Data<{genericsArgs}> IQueryIterator<Data<{genericsArgs}>>.Current => this;
+
+                    readonly IQueryIterator<Data<{genericsArgs}>> IQueryIterator<Data<{genericsArgs}>>.GetEnumerator() => this;
                 }}
             ");
         }

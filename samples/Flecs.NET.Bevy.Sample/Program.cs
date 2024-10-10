@@ -22,19 +22,33 @@ scheduler.AddSystem((
         Data<Position, Velocity>,
         Filter<With<Pair<PlayerTag, Wildcard>>>> query, Res<int> res) =>
 {
-    foreach ((var entities, var field0, var field1) in query.Iter<Position, Velocity>())
+    foreach ((var entities, var a, var b) in query.Iter())
     {
         var count = entities.Length;
 
         for (var i = 0; i < count; ++i)
         {
-            ref var pos = ref field0[i];
-            ref var vel = ref field1[i];
+            ref var pos = ref a[i];
+            ref var vel = ref b[i];
 
             pos.X *= vel.X;
             pos.Y *= vel.Y;
         }
     }
+
+    // foreach ((var entities, var field0, var field1) in query.Iter<Position, Velocity>())
+    // {
+    //     var count = entities.Length;
+
+    //     for (var i = 0; i < count; ++i)
+    //     {
+    //         ref var pos = ref field0[i];
+    //         ref var vel = ref field1[i];
+
+    //         pos.X *= vel.X;
+    //         pos.Y *= vel.Y;
+    //     }
+    // }
 
     //foreach (var it in query)
     //{
