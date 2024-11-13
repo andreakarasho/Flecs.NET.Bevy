@@ -1,6 +1,9 @@
 
 using System.Runtime.CompilerServices;
 using Flecs.NET.Core;
+using Flecs.NET.Bindings;
+using Flecs.NET.Utilities;
+using System.Runtime.InteropServices;
 
 namespace Flecs.NET.Bevy;
 
@@ -171,7 +174,7 @@ public sealed partial class Scheduler
 		// var multithreading = systems.Where(static s => !s.IsResourceInUse());
 		// var singlethreading = systems.Except(multithreading);
 
-		if (multithreading.Any())
+		if (multithreading.Count > 0)
 			Parallel.ForEach(multithreading, static s => s.Run());
 
 		foreach (var system in singlethreading)
@@ -362,11 +365,7 @@ public sealed class FlecsWorld : SystemParam<World>, IIntoSystemParam<World, Fle
     {
 		if (arg.Has<FlecsWorld>())
 			return arg.GetMut<FlecsWorld>();
-
-		var flecsWorld = new FlecsWorld(arg);
-		arg.Set(flecsWorld);
-
-		return flecsWorld;
+		throw new NotImplementedException("FlecsWorld");
     }
 }
 
@@ -414,8 +413,6 @@ public class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoSystemPa
 		return q;
     }
 
-	public QueryIterator GetEnumerator() => new (in _query);
-
 	public int Count() => _query.Count();
 
 	public Entity Single()
@@ -424,27 +421,29 @@ public class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoSystemPa
 		if (count != 1)
 			throw new Exception("query must match only one entity");
 
-		foreach (var it in this)
+		var enumerator = new QueryIterator(in _query);
+		foreach (var it in enumerator)
 			return it.Entity(0);
 
 		return Entity.Null();
 	}
 
-	public ref T Single<T>(int fieldIndex) where T : IComponent
+	public ref T Single<T>(int fieldIndex) where T : struct, IComponent
 	{
         var count = Count();
         if (count != 1)
             throw new Exception("query must match only one entity");
 
-		foreach (var it in this)
+		var enumerator = new QueryIterator(in _query);
+		foreach (var it in enumerator)
 			return ref it.Field<T>(fieldIndex)[0];
 
 		return ref Unsafe.NullRef<T>();
     }
 
-	public IQueryIterator<TQueryData> Iter()
+	public IQueryIterator<TQueryData> GetEnumerator()
 	{
-		return TQueryData.CreateIterator(GetEnumerator());
+		return TQueryData.CreateIterator(new (in _query));
 	}
 }
 
@@ -512,7 +511,13 @@ public sealed class SchedulerState : SystemParam<World>, IIntoSystemParam<World,
 }
 
 
-public interface IComponent { }
+public interface IComponent
+{
+	public static unsafe virtual Field<T> GetField<T>(Iter it, int index) where T : struct, IComponent
+	{
+		return it.Field<T>(index);
+	}
+}
 
 public interface ITermCreator
 {
@@ -532,7 +537,7 @@ public interface IData<TData> : ITermCreator where TData : IData<TData>
 }
 
 public interface IFilter : ITermCreator { }
-public interface INestedFilter
+public interface INestedFilter : IFilter
 {
 	void BuildAsParam(ref QueryBuilder builder);
 }
@@ -619,9 +624,11 @@ public readonly struct Without<T> : IFilter, INestedFilter
     }
 }
 
-public readonly struct Optional<T> : IComponent, INestedFilter
+public struct Optional<T> : IComponent, INestedFilter
 	where T : struct, IComponent
 {
+	public T Value;
+
 	public static void Build(ref QueryBuilder builder)
     {
 		if (!FilterBuilder<T>.Build(ref builder))
@@ -634,6 +641,12 @@ public readonly struct Optional<T> : IComponent, INestedFilter
     {
 		Build(ref builder);
     }
+
+	public static unsafe Field<T2> GetField<T2>(Iter it, int index) where T2 : struct, IComponent
+	{
+		var f = T.GetField<T>(it, index);
+		return Unsafe.As<Field<T>, Field<T2>>(ref f);
+	}
 }
 
 public readonly struct Pair<TFirst, TSecond> : IComponent, IFilter, INestedFilter
@@ -687,4 +700,6 @@ public unsafe struct QueryIterator
 		fixed (NET.Bindings.flecs.ecs_iter_t* ptr = &_ecsIt)
 			return _query.GetNext(ptr);
 	}
+
+	public readonly QueryIterator GetEnumerator() => this;
 }

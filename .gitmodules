@@ -1,0 +1,3 @@
+[submodule "libs/Flecs.NET"]
+	path = libs/Flecs.NET
+	url = https://github.com/BeanCheeseBurrito/Flecs.NET.git

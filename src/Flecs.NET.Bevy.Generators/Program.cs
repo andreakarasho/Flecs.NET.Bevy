@@ -48,7 +48,7 @@ public sealed class MyGenerator : IIncrementalGenerator
             var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct, IComponent");
             var queryBuilderCalls = GenerateSequence(i + 1, "\n", j => $"if (!FilterBuilder<T{j}>.Build(ref builder)) builder.With<T{j}>();");
             var fieldSign = GenerateSequence(i + 1, ", ", j => $"out Field<T{j}> field{j}");
-            var fieldAssignments = GenerateSequence(i + 1, "\n", j => $"field{j} = iter.Field<T{j}>({j});");
+            var fieldAssignments = GenerateSequence(i + 1, "\n", j => $"field{j} = T{j}.GetField<T{j}>(iter, {j});");
 
             sb.AppendLine($@"
                 public struct Data<{genericsArgs}> : IData<Data<{genericsArgs}>>, IQueryIterator<Data<{genericsArgs}>>
@@ -74,7 +74,7 @@ public sealed class MyGenerator : IIncrementalGenerator
                     }}
 
                     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    public void Deconstruct(out Field<ulong> entities, {fieldSign})
+                    public unsafe void Deconstruct(out Field<ulong> entities, {fieldSign})
                     {{
                         var iter = _iterator.Current;
                         entities = iter.Entities();

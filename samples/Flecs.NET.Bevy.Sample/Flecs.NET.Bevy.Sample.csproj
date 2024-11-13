@@ -12,4 +12,18 @@
     <ProjectReference Include="..\..\src\Flecs.NET.Bevy\Flecs.NET.Bevy.csproj" />
   </ItemGroup>
 
+  <!-- <Import Project="$(ProjectDir)..\..\libs\Flecs.NET\src\Flecs.NET.Native\buildTransitive\Flecs.NET.Native.props" />
+  <Import Project="$(ProjectDir)..\..\libs\Flecs.NET\src\Flecs.NET.Native\buildTransitive\Flecs.NET.Native.targets" /> -->
+
+  <ItemGroup>
+    <NativeLibrary Include="$(ProjectDir)..\..\libs\Flecs.NET\src\Flecs.NET.Native\bin\$(Configuration)\runtimes\$(RuntimeIdentifier)\native\flecs.lib"
+      Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'false'"/>
+
+    <NativeLibrary Include="$(ProjectDir)..\..\libs\Flecs.NET\src\Flecs.NET.Native\bin\$(Configuration)\runtimes\$(RuntimeIdentifier)\native\libflecs.a"
+      Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))'"/>
+
+
+    <DirectPInvoke Include="flecs"/>
+  </ItemGroup>
+
 </Project>
