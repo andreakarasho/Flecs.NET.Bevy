@@ -70,6 +70,7 @@ public sealed class MyGenerator : IIncrementalGenerator
 						internal Data(QueryIterator queryIterator)
 						{{
 							_iterator = queryIterator;
+                            _index = -1;
                             _count = -1;
 						}}
 
@@ -105,7 +106,7 @@ public sealed class MyGenerator : IIncrementalGenerator
 						[MethodImpl(MethodImplOptions.AggressiveInlining)]
 						public bool MoveNext()
 						{{
-							if (_index >= _count)
+							if (++_index >= _count)
 							{{
 								if (!_iterator.MoveNext())
 									return false;
@@ -115,10 +116,6 @@ public sealed class MyGenerator : IIncrementalGenerator
                                 _entities = _iterator.EntitiesDangerous();
                                 _count = _entities.Length;
                                 _index = 0;
-							}}
-							else
-							{{
-								_index += 1;
 							}}
 
 							return true;
