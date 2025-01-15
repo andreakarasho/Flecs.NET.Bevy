@@ -44,51 +44,90 @@ public sealed class MyGenerator : IIncrementalGenerator
 
         for (var i = 0; i < MAX_PARAMS; ++i)
         {
-            var genericsArgs = GenerateSequence(i + 1, ", ", j => $"T{j}");
-            var genericsArgsWhere = GenerateSequence(i + 1, "\n", j => $"where T{j} : struct, IComponent");
-            var queryBuilderCalls = GenerateSequence(i + 1, "\n", j => $"if (!FilterBuilder<T{j}>.Build(ref builder)) builder.With<T{j}>();");
-            var fieldSign = GenerateSequence(i + 1, ", ", j => $"out Field<T{j}> field{j}");
-            var fieldAssignments = GenerateSequence(i + 1, "\n", j => $"field{j} = T{j}.GetField<T{j}>(iter, {j});");
+            var generics = GenerateSequence(i + 1, ", ", j => $"T{j}");
+				var whereGenerics = GenerateSequence(i + 1, " ", j => $"where T{j} : struct");
+				var ptrList = GenerateSequence(i + 1, "\n", j => $"private Field<T{j}> _current{j};");
+				var sizeDeclarations = GenerateSequence(i + 1, "\n", j => $"private int _size{j};");
+				var ptrSet = GenerateSequence(i + 1, "\n", j => $"_current{j} = _iterator.DataRefWithSize<T{j}>({j}, out _size{j});");
+				// var ptrAdvance = GenerateSequence(i + 1, "\n", j => $"_current{j}.Ref = ref Unsafe.Add(ref _current{j}.Ref, _size{j});");
+				var fieldSign = GenerateSequence(i + 1, ", ", j => $"out Ptr<T{j}> ptr{j}");
+				var fieldAssignments = GenerateSequence(i + 1, "\n", j => $"Unsafe.SkipInit<Ptr<T{j}>>(out ptr{j}); ptr{j}.Ref = ref _current{j}[_index];");
+				var queryBuilderCalls = GenerateSequence(i + 1, "\n", j => $"if (!FilterBuilder<T{j}>.Build(ref builder)) builder.With<T{j}>();");
 
-            sb.AppendLine($@"
-                public struct Data<{genericsArgs}> : IData<Data<{genericsArgs}>>, IQueryIterator<Data<{genericsArgs}>>
-                    {genericsArgsWhere}
-                {{
-                    private QueryIterator _iterator;
+				sb.AppendLine($@"
+					[SkipLocalsInit]
+					public unsafe ref struct Data<{generics}> : IData<Data<{generics}>>, IQueryIterator<Data<{generics}>>
+						{whereGenerics}
+					{{
+						private QueryIterator _iterator;
+                        private int _index, _count;
+						private Field<ulong> _entities;
 
-                    internal Data(QueryIterator iterator) => _iterator = iterator;
+						{ptrList}
+						{sizeDeclarations}
 
-                    public static void Build(ref QueryBuilder builder)
-                    {{
-                        {queryBuilderCalls}
-                    }}
+						[MethodImpl(MethodImplOptions.AggressiveInlining)]
+						internal Data(QueryIterator queryIterator)
+						{{
+							_iterator = queryIterator;
+                            _count = -1;
+						}}
 
-                    public static IQueryIterator<Data<{genericsArgs}>> CreateIterator(QueryIterator iterator)
-                        => new Data<{genericsArgs}>(iterator);
+						public static void Build(ref QueryBuilder builder)
+						{{
+							{queryBuilderCalls}
+						}}
 
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    public void Deconstruct({fieldSign})
-                    {{
-                        var iter = _iterator.Current;
-                        {fieldAssignments}
-                    }}
+						[MethodImpl(MethodImplOptions.AggressiveInlining)]
+						public static Data<{generics}> CreateIterator(QueryIterator iterator)
+							=> new Data<{generics}>(iterator);
 
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    public unsafe void Deconstruct(out Field<ulong> entities, {fieldSign})
-                    {{
-                        var iter = _iterator.Current;
-                        entities = iter.Entities();
-                        {fieldAssignments}
-                    }}
+						[System.Diagnostics.CodeAnalysis.UnscopedRef]
+						public ref Data<{generics}> Current
+						{{
+							[MethodImpl(MethodImplOptions.AggressiveInlining)]
+							get => ref this;
+						}}
 
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-	                public bool MoveNext() => _iterator.MoveNext();
+						[MethodImpl(MethodImplOptions.AggressiveInlining)]
+						public readonly void Deconstruct({fieldSign})
+						{{
+							{fieldAssignments}
+						}}
 
-                    readonly Data<{genericsArgs}> IQueryIterator<Data<{genericsArgs}>>.Current => this;
+						[MethodImpl(MethodImplOptions.AggressiveInlining)]
+						public readonly void Deconstruct(out PtrRO<ulong> entity, {fieldSign})
+						{{
+							entity = new (ref _entities[_index]);
+							{fieldAssignments}
+						}}
 
-                    readonly IQueryIterator<Data<{genericsArgs}>> IQueryIterator<Data<{genericsArgs}>>.GetEnumerator() => this;
-                }}
-            ");
+						[MethodImpl(MethodImplOptions.AggressiveInlining)]
+						public bool MoveNext()
+						{{
+							if (_index >= _count)
+							{{
+								if (!_iterator.MoveNext())
+									return false;
+
+								{ptrSet}
+
+                                _entities = _iterator.EntitiesDangerous();
+                                _count = _entities.Length;
+                                _index = 0;
+							}}
+							else
+							{{
+								_index += 1;
+							}}
+
+							return true;
+						}}
+
+						[MethodImpl(MethodImplOptions.AggressiveInlining)]
+						public readonly Data<{generics}> GetEnumerator() => this;
+					}}
+				");
         }
 
         for (var i = 0; i < MAX_PARAMS; ++i)

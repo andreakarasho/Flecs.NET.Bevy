@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>13</LangVersion>
+    <TargetFrameworks>net9.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	  <LangVersion>preview</LangVersion>
@@ -12,22 +13,12 @@
     <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)\Generated</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
-  <!-- <ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Flecs.NET.Debug" Version="*-*" Condition="'$(Configuration)' == 'Debug'" />
     <PackageReference Include="Flecs.NET.Release" Version="*-*" Condition="'$(Configuration)' == 'Release'" />
-  </ItemGroup> -->
-
-  <!-- <Import Project="..\..\libs\Flecs.NET\src\Flecs.NET.Native\buildTransitive\Flecs.NET.Native.props" />
-  <Import Project="..\..\libs\Flecs.NET\src\Flecs.NET.Native\buildTransitive\Flecs.NET.Native.targets" /> -->
-
-
-  <ItemGroup>
-    <NativeLibrary Include="$(ProjectDir)..\..\libs\Flecs.NET\src\Flecs.NET.Native\bin\Release\runtimes\win-x64\native\flecs.lib"/>
-    <DirectPInvoke Include="flecs"/>
   </ItemGroup>
 
   <ItemGroup>
-	  <ProjectReference Include="..\..\libs\Flecs.NET\src\Flecs.NET\Flecs.NET.csproj" />
 	  <ProjectReference Include="..\Flecs.NET.Bevy.Generators\Flecs.NET.Bevy.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 

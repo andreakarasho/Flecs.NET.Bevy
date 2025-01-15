@@ -17,34 +17,16 @@ ecs.Import<CustomPlugin>();
 
 var scheduler = new Scheduler(ecs);
 
-
-scheduler.AddSystem((Query<Data<Position, Velocity>> query) =>
+var sys = (Query<Data<Position, Velocity>> query) =>
 {
-    foreach ((var entities, var a, var b) in query)
+    foreach ((var pos, var vel) in query)
     {
-        var count = entities.Length;
-
-        ref var pos = ref a[0];
-        ref var vel = ref b[0];
-        ref var last = ref Unsafe.Add(ref pos, count);
-        while (Unsafe.IsAddressLessThan(ref pos, ref last))
-        {
-            pos.X *= vel.X;
-            pos.Y *= vel.Y;
-            pos = ref Unsafe.Add(ref pos, 1);
-            vel = ref Unsafe.Add(ref vel, 1);
-        }
-
-        // for (var i = 0; i < count; ++i)
-        // {
-        //     ref var pos = ref a[i];
-        //     ref var vel = ref b[i];
-
-        //     pos.X *= vel.X;
-        //     pos.Y *= vel.Y;
-        // }
+        pos.Ref.X *= vel.Ref.X;
+        pos.Ref.Y *= vel.Ref.Y;
     }
-});
+};
+
+scheduler.AddSystem(sys);
 
 
 
@@ -93,18 +75,17 @@ while (true)
 
 
 
-
-struct Position : IComponent
+struct Position
 {
     public float X, Y, Z;
 }
 
-struct Velocity : IComponent
+struct Velocity
 {
     public float X, Y;
 }
 
-struct PlayerTag : IComponent { }
+struct PlayerTag { }
 
 
 class CustomPlugin : Plugin
