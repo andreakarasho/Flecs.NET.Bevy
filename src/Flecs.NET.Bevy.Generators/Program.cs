@@ -47,8 +47,7 @@ public sealed class MyGenerator : IIncrementalGenerator
             var generics = GenerateSequence(i + 1, ", ", j => $"T{j}");
 				var whereGenerics = GenerateSequence(i + 1, " ", j => $"where T{j} : struct");
 				var ptrList = GenerateSequence(i + 1, "\n", j => $"private Field<T{j}> _current{j};");
-				var sizeDeclarations = GenerateSequence(i + 1, "\n", j => $"private int _size{j};");
-				var ptrSet = GenerateSequence(i + 1, "\n", j => $"_current{j} = _iterator.DataRefWithSize<T{j}>({j}, out _size{j});");
+				var ptrSet = GenerateSequence(i + 1, "\n", j => $"_current{j} = _iterator.Field<T{j}>({j});");
 				// var ptrAdvance = GenerateSequence(i + 1, "\n", j => $"_current{j}.Ref = ref Unsafe.Add(ref _current{j}.Ref, _size{j});");
 				var fieldSign = GenerateSequence(i + 1, ", ", j => $"out Ptr<T{j}> ptr{j}");
 				var fieldAssignments = GenerateSequence(i + 1, "\n", j => $"Unsafe.SkipInit<Ptr<T{j}>>(out ptr{j}); ptr{j}.Ref = ref _current{j}[_index];");
@@ -59,15 +58,14 @@ public sealed class MyGenerator : IIncrementalGenerator
 					public unsafe ref struct Data<{generics}> : IData<Data<{generics}>>, IQueryIterator<Data<{generics}>>
 						{whereGenerics}
 					{{
-						private QueryIterator _iterator;
+						private Iter _iterator;
                         private int _index, _count;
 						private Field<ulong> _entities;
 
 						{ptrList}
-						{sizeDeclarations}
 
 						[MethodImpl(MethodImplOptions.AggressiveInlining)]
-						internal Data(QueryIterator queryIterator)
+						internal Data(Iter queryIterator)
 						{{
 							_iterator = queryIterator;
                             _index = -1;
@@ -80,7 +78,7 @@ public sealed class MyGenerator : IIncrementalGenerator
 						}}
 
 						[MethodImpl(MethodImplOptions.AggressiveInlining)]
-						public static Data<{generics}> CreateIterator(QueryIterator iterator)
+						public static Data<{generics}> CreateIterator(Iter iterator)
 							=> new Data<{generics}>(iterator);
 
 						[System.Diagnostics.CodeAnalysis.UnscopedRef]
@@ -108,14 +106,13 @@ public sealed class MyGenerator : IIncrementalGenerator
 						{{
 							if (++_index >= _count)
 							{{
-								if (!_iterator.MoveNext())
+								if (!_iterator.Next())
 									return false;
 
 								{ptrSet}
 
-                                _entities = _iterator.EntitiesDangerous();
+                                _entities = _iterator.Entities();
                                 _count = _entities.Length;
-                                _index = 0;
 							}}
 
 							return true;

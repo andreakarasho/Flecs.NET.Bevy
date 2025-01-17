@@ -397,7 +397,7 @@ public unsafe class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoS
 	where TQueryFilter : struct, IFilter, allows ref struct
 {
 	private readonly Query _query;
-	private Flecs.NET.Bindings.flecs.ecs_iter_t _iter;
+	private flecs.ecs_iter_t _iter;
 
 	internal Query(Query query) => _query = query;
 
@@ -428,8 +428,8 @@ public unsafe class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoS
 			throw new Exception("query must match only one entity");
 
 		var enumerator = GetIterator();
-		foreach (var it in enumerator)
-			return it.Entity(0);
+		while (enumerator.Next())
+			return enumerator.Entity(0);
 
 		return Entity.Null();
 	}
@@ -441,26 +441,19 @@ public unsafe class Query<TQueryData, TQueryFilter> : SystemParam<World>, IIntoS
             throw new Exception("query must match only one entity");
 
 		var enumerator = GetIterator();
-		foreach (var it in enumerator)
-			return ref it.Field<T>(fieldIndex)[0];
+		while (enumerator.Next())
+			return ref enumerator.Field<T>(fieldIndex)[0];
 
 		return ref Unsafe.NullRef<T>();
     }
 
-	public unsafe TQueryData GetEnumerator()
-	{
-		return TQueryData.CreateIterator(GetIterator());
-	}
+	public TQueryData GetEnumerator() => TQueryData.CreateIterator(GetIterator());
 
-	private QueryIterator GetIterator()
+	private Iter GetIterator()
 	{
 		_iter = _query.GetIter();
-		fixed (flecs.ecs_iter_t* i = &_iter)
-		{
-			var it = new Iter(i);
-			var iterator = new QueryIterator(it);
-			return iterator;
-		}
+		fixed (flecs.ecs_iter_t* it = &_iter)
+			return new (it);
 	}
 }
 
@@ -544,7 +537,7 @@ public interface IQueryIterator<TData> where TData : struct, allows ref struct
 
 public interface IData<TData> : ITermCreator where TData : struct, allows ref struct
 {
-	public static abstract TData CreateIterator(QueryIterator iterator);
+	public static abstract TData CreateIterator(Iter iterator);
 }
 
 public interface IFilter : ITermCreator { }
@@ -571,9 +564,9 @@ public readonly struct Wildcard { }
 
 public ref struct Empty : IData<Empty>, IQueryIterator<Empty>, IFilter
 {
-	private QueryIterator _iterator;
+	private Iter _iterator;
 
-	internal Empty(QueryIterator iterator) => _iterator = iterator;
+	internal Empty(Iter iterator) => _iterator = iterator;
 
 
     public static void Build(ref QueryBuilder builder)
@@ -581,7 +574,7 @@ public ref struct Empty : IData<Empty>, IQueryIterator<Empty>, IFilter
 
     }
 
-    public static Empty CreateIterator(QueryIterator iterator)
+    public static Empty CreateIterator(Iter iterator)
     {
 		return new Empty(iterator);
     }
@@ -593,24 +586,24 @@ public ref struct Empty : IData<Empty>, IQueryIterator<Empty>, IFilter
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void Deconstruct(out Field<ulong> entities, out int count)
 	{
-		entities = _iterator.Current.Entities();
-		count = _iterator.Current.Count();
+		entities = _iterator.Entities();
+		count = entities.Length;
 	}
 
 	public readonly Empty GetEnumerator() => this;
 
-    public bool MoveNext() => _iterator.MoveNext();
+    public bool MoveNext() => _iterator.Next();
 }
 
-public readonly struct With<T> : IFilter, INestedFilter
+public readonly ref struct With<T> : IFilter, INestedFilter
 	where T : struct
 {
     public static void Build(ref QueryBuilder builder)
     {
 		if (!FilterBuilder<T>.Build(ref builder))
-			builder.With<T>().InOutNone();
+			builder.With<T>();
 		else
-			builder.Oper(Bindings.flecs.ecs_oper_kind_t.EcsAnd).InOutNone();
+			builder.TermAt<T>().And();
     }
 
     public void BuildAsParam(ref QueryBuilder builder)
@@ -619,15 +612,15 @@ public readonly struct With<T> : IFilter, INestedFilter
     }
 }
 
-public readonly struct Without<T> : IFilter, INestedFilter
+public readonly ref struct Without<T> : IFilter, INestedFilter
 	where T : struct
 {
 	public static void Build(ref QueryBuilder builder)
     {
 		if (!FilterBuilder<T>.Build(ref builder))
-			builder.Without<T>().InOutNone();
+			builder.Without<T>();
 		else
-			builder.Oper(Bindings.flecs.ecs_oper_kind_t.EcsNot).InOutNone();
+			builder.TermAt<T>().Not();
     }
 
     public void BuildAsParam(ref QueryBuilder builder)
@@ -636,17 +629,15 @@ public readonly struct Without<T> : IFilter, INestedFilter
     }
 }
 
-public struct Optional<T> : INestedFilter
+public readonly ref struct Optional<T> : INestedFilter
 	where T : struct
 {
-	public T Value;
-
 	public static void Build(ref QueryBuilder builder)
     {
 		if (!FilterBuilder<T>.Build(ref builder))
 			builder.With<T>().Optional();
 		else
-			builder.Optional();
+			builder.TermAt<T>().Optional();
     }
 
     public void BuildAsParam(ref QueryBuilder builder)
@@ -655,69 +646,29 @@ public struct Optional<T> : INestedFilter
     }
 }
 
-public readonly struct Pair<TFirst, TSecond> : IFilter, INestedFilter
-	where TFirst : struct
-	where TSecond : struct
-{
-	public static void Build(ref QueryBuilder builder)
-    {
-		if (typeof(TFirst) == typeof(Wildcard))
-			builder.With(Ecs.Wildcard);
-		else
-			builder.With<TFirst>();
+// public readonly struct Pair<TFirst, TSecond> : IFilter, INestedFilter
+// 	where TFirst : struct
+// 	where TSecond : struct
+// {
+// 	public static void Build(ref QueryBuilder builder)
+//     {
+// 		if (typeof(TFirst) == typeof(Wildcard))
+// 			builder.With(Ecs.Wildcard);
+// 		else
+// 			builder.First<TFirst>();
 
-		if (typeof(TSecond) == typeof(Wildcard))
-			builder.Second(Ecs.Wildcard);
-		else
-			builder.Second<TSecond>();
-    }
+// 		if (typeof(TSecond) == typeof(Wildcard))
+// 			builder.Second(Ecs.Wildcard);
+// 		else
+// 			builder.Second<TSecond>();
+//     }
 
-	public void BuildAsParam(ref QueryBuilder builder)
-    {
-		Build(ref builder);
-    }
-}
+// 	public void BuildAsParam(ref QueryBuilder builder)
+//     {
+// 		Build(ref builder);
+//     }
+// }
 
-
-[SkipLocalsInit]
-public unsafe ref struct QueryIterator
-{
-	private Iter _iter;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal QueryIterator(Iter iter)
-	{
-		_iter = iter;
-	}
-
-	[UnscopedRef]
-	public ref Iter Current
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get
-		{
-			return ref _iter;
-		}
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool MoveNext() => _iter.Next();
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal readonly Field<T> DataRefWithSize<T>(int index, out int sizeInBytes) where T : struct
-	{
-		sizeInBytes = (int)_iter.Size(index);
-		return _iter.Field<T>(index);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal readonly Field<ulong> EntitiesDangerous() => _iter.Entities();
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void Dispose() => _iter.Dispose();
-
-	public readonly QueryIterator GetEnumerator() => this;
-}
 
 [SkipLocalsInit]
 public ref struct Ptr<T> where T : struct
